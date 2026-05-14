@@ -34,9 +34,9 @@ The RPU removes the processor from the decision entirely. The decision happens i
 | `tb_rpu_ultimate_final.sv` | Self-checking testbench. Run this. It does everything automatically. |
 | `tb_rpu_ultimate_final_synthesis.sv` | Post-synthesis testbench with SDF annotation. Only needed after synthesis against a netlist. |
 
-**Start with the first two files.
+Start with the first two files.
 
-**Why only 560 lines?** This is intentional. The RPU is a combinational hardware primitive — there is no firmware, no state machine, no protocol stack, no bus interface. The entire decision chain (temporal change computation → threshold comparison → gate control) is pure combinational logic that completes within a single clock cycle. Fewer lines means fewer failure modes and a smaller attack surface. The 2,960-gate count at TSMC 65nm confirms the architecture is compact by design, not by omission.**
+**Why only 560 lines?** This is intentional. The RPU is a combinational hardware primitive — there is no firmware, no state machine, no protocol stack, no bus interface. The entire decision chain (temporal change computation → threshold comparison → gate control) is pure combinational logic that completes within a single clock cycle. Fewer lines means fewer failure modes and a smaller attack surface. The 2,960-gate count at TSMC 65nm confirms the architecture is compact by design, not by omission.
 
 ---
 
@@ -114,7 +114,7 @@ Wake-up latency across all scenarios: **2 clock cycles. Always. No jitter.**
 False wake-ups: **0** in scenarios 1 and 2.
 Missed events: **0** in any scenario.
 
-Platform: lowRISC Ibex RISC-V (RV32IMC) · Verilator · 5,000,004 total cycles.
+Platform: [lowRISC Ibex](https://github.com/lowRISC/ibex) RISC-V (RV32IMC) · Verilator · 5,000,004 total cycles.
 
 ---
 
@@ -250,7 +250,6 @@ This means the Guardian continuously consumes a small amount of static power reg
 
 ---
 
-
 ## Frequently asked questions
 
 **"We already use WFI and interrupts — isn't that the same thing?"**
@@ -314,13 +313,34 @@ Set DATA_WIDTH to match your bus width. The architecture scales automatically �
 | Guardian ungated clock | Runs continuously for watchdog compliance | Small static power overhead |
 | 2-stage pipeline | Stage-A captures, Stage-B computes delta | 2-cycle latency by design (not a bug) |
 | Accumulator width | SUM_W = DATA_WIDTH + log₂(DEPTH/2) | Must be verified when DEPTH > 32 |
-| Dead zone in adaptive threshold | No adjustment when LO_DELTA < delta < HI_DELTA | Intentional stability band |
+| Dead zone in adaptive threshold | No adjustment when LO_DELTA < delta < HI_DELTA | Intentional stability band — prevents threshold oscillation on borderline signals |
+
+**Tuning for slow drift applications (Scenario 3 optimization):** The default parameters (HI_DELTA=200, LO_DELTA=20) create a wide dead zone that prioritizes stability over sensitivity. In applications with gradual environmental drift — temperature sensors, pressure monitors, slowly varying signals — narrowing the dead zone improves suppression:
+
+```systemverilog
+// Default (stable environments, noise-heavy signals)
+.HI_DELTA_P (200),
+.LO_DELTA_P (20),
+
+// Optimized for slow drift detection
+.HI_DELTA_P (80),   // Threshold steps up sooner in noisy conditions
+.LO_DELTA_P (40),   // Threshold steps down sooner when signal quiets
+.STEP_UP_P  (10),   // Faster desensitization
+.STEP_DN_P  (3),    // Slower resensitization (conservative)
+```
+
+This trades some stability for faster adaptation to drifting baselines. The 70.3% result in Scenario 3 (slow drift + large anomaly) reflects the default conservative tuning — with narrow dead zone parameters, this scenario improves significantly.
 
 ## License
 
-This RTL is released for **research and evaluation purposes** under the Apache 2.0 License.
+This RTL is released for **research and evaluation purposes only**.
 
-**Commercial use requires a license from RPU Microelectronics.**
+This is **not** a standard Apache 2.0 license. The LICENSE file in this repository is Apache 2.0 with a commercial use restriction added.
+
+- Research, academic, and evaluation use: **free**
+- Commercial use (SoC integration, tape-out, product deployment): **requires a written license agreement**
+
+Contact ozcan.demirkiran@rpu-micro.com for commercial licensing.
 
 The underlying architecture is protected by international patent PCT/IB2026/053070 (153 WIPO member countries). The patent covers the architectural principle — using temporal rate of change (ΔC/Δt) as the primary signal for autonomous hardware gating decisions. Reimplementing the same concept in a different HDL, topology, or process node does not circumvent the patent.
 
@@ -337,4 +357,5 @@ ozcan.demirkiran@rpu-micro.com
 [rpu-micro.com](https://rpu-micro.com)  
 
 Patent: PCT/IB2026/053070 · TR 2025/012696  
-TÜRKPATENT confirmed novel over HP US8450711B2 and IBM US11144718B2.
+TÜRKPATENT confirmed novel over HP US8450711B2 and IBM US11144718B2.  
+GitHub: [github.com/Rpu-Microelectronics/rpu-microelectronics](https://github.com/Rpu-Microelectronics/rpu-microelectronics)
