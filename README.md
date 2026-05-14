@@ -30,7 +30,7 @@ The RPU removes the processor from the decision entirely. The decision happens i
 
 | File | Purpose |
 |------|---------|
-| `rpu_ultimate_final.sv` | The RPU RTL. 1,076 lines. SystemVerilog IEEE 1800-2017. No external libraries, no macros, no dependencies. |
+| `rpu_ultimate_final.sv` | The RPU RTL. 560 lines. SystemVerilog IEEE 1800-2017. No external libraries, no macros, no dependencies. |
 | `tb_rpu_ultimate_final.sv` | Self-checking testbench. Run this. It does everything automatically. |
 | `tb_rpu_ultimate_final_synthesis.sv` | Post-synthesis testbench with SDF annotation. Only needed after synthesis against a netlist. |
 
