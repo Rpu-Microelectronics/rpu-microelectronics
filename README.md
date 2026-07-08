@@ -4,7 +4,7 @@
 
 [![Patent](https://img.shields.io/badge/Patent-PCT%2FIB2026%2F053070-blue)](https://www.wipo.int)
 [![Silicon](https://img.shields.io/badge/Silicon-TSMC%2065nm%20%7C%20SKY130-green)](https://rpu-micro.com)
-[![License](https://img.shields.io/badge/License-Apache%202.0%20(non--commercial)-orange)](LICENSE)
+[![License](https://img.shields.io/badge/License-Source--Available%20(evaluation%20free)-orange)](LICENSE)
 
 ---
 
@@ -333,16 +333,14 @@ This trades some stability for faster adaptation to drifting baselines. The 70.3
 
 ## License
 
-This RTL is released for **research and evaluation purposes only**.
-
-This is **not** a standard Apache 2.0 license. The LICENSE file in this repository is Apache 2.0 with a commercial use restriction added.
+This repository is released under the **RPU Source-Available License v1.0** (see LICENSE).
 
 - Research, academic, and evaluation use: **free**
-- Commercial use (SoC integration, tape-out, product deployment): **requires a written license agreement**
+- Redistribution with notices intact, for non-commercial purposes: **permitted**
+- Commercial use (SoC integration, tape-out, product deployment, resale as IP): **requires a written license agreement**
+- Patent rights: **not granted by the source license** — copyright permission and patent permission are separate
 
-Contact ozcan.demirkiran@rpu-micro.com for commercial licensing.
-
-The underlying architecture is protected by international patent PCT/IB2026/053070 (153 WIPO member countries). The patent covers the architectural principle — using temporal rate of change (ΔC/Δt) as the primary signal for autonomous hardware gating decisions. Reimplementing the same concept in a different HDL, topology, or process node does not circumvent the patent.
+The underlying architecture is the subject of international patent application PCT/IB2026/053070 (153 PCT contracting states; Turkish priority TR 2025/012696, 4 September 2025). The claims are drafted independently of implementation language, circuit topology, and process node — a reimplementation in a different HDL or at a different node can still fall within the claimed scope. If you are evaluating the RPU for a commercial product, talk to us early; evaluation is free and we will tell you plainly what is and is not covered.
 
 For commercial licensing inquiries: ozcan.demirkiran@rpu-micro.com
 
@@ -357,5 +355,5 @@ ozcan.demirkiran@rpu-micro.com
 [rpu-micro.com](https://rpu-micro.com)  
 
 Patent: PCT/IB2026/053070 · TR 2025/012696  
-TÜRKPATENT confirmed novel over HP US8450711B2 and IBM US11144718B2.  
+TÜRKPATENT search report: no novelty-destroying (category X) citation over the searched art, including HP US8450711B2 and IBM US11144718B2. PCT international examination ongoing.  
 GitHub: [github.com/Rpu-Microelectronics/rpu-microelectronics](https://github.com/Rpu-Microelectronics/rpu-microelectronics)
