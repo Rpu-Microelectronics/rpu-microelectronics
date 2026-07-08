@@ -1,21 +1,40 @@
+RPU SOURCE-AVAILABLE LICENSE v1.0
+==================================
+
 Copyright (c) 2026 Özcan Demirkıran, RPU Microelectronics
+All rights reserved.
 
-This work is licensed under the Apache License, Version 2.0 for
-non-commercial, research, and evaluation purposes only.
+This license governs the use of the RPU (Reflexive Processing Unit)
+hardware description files, testbenches, and documentation contained
+in this repository (the "Work").
 
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
 
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION as defined
-in the Apache License 2.0 apply, with the following additional condition:
+1. PERMITTED USES (free of charge)
+----------------------------------
+Subject to the conditions below, permission is hereby granted to any
+person obtaining a copy of the Work to:
 
-COMMERCIAL USE RESTRICTION:
-Any use of this work, in whole or in part, in a commercial product,
-commercial service, or commercial system-on-chip (SoC) design — including
-but not limited to integration into silicon, FPGA deployment in commercial
-products, or use in IP blocks licensed to third parties — requires a
-separate written commercial license agreement with RPU Microelectronics.
+  a) USE and REPRODUCE the Work for research, evaluation, benchmarking,
+     and academic purposes;
+  b) MODIFY the Work for the purposes in (a), provided modifications
+     are clearly marked as such;
+  c) REDISTRIBUTE the Work, or modifications of it, for the purposes
+     in (a), provided this license text and all copyright and patent
+     notices are retained intact and unmodified;
+  d) PUBLISH academic results obtained with the Work, with citation of
+     international patent application PCT/IB2026/053070.
+
+
+2. COMMERCIAL USE RESTRICTION
+-----------------------------
+Any use of the Work, in whole or in part, in or for a commercial
+product, commercial service, or commercial system-on-chip (SoC)
+design — including but not limited to integration into silicon,
+FPGA deployment in commercial products, incorporation into IP blocks
+licensed or sold to third parties, or use in the development of a
+commercial product — is NOT permitted under this license and requires
+a separate written commercial license agreement with RPU
+Microelectronics.
 
 To obtain a commercial license, contact:
   Özcan Demirkıran
@@ -23,29 +42,60 @@ To obtain a commercial license, contact:
   ozcan.demirkiran@rpu-micro.com
   rpu-micro.com
 
-PATENT NOTICE:
-The architecture implemented in this repository is protected by
-international patent application PCT/IB2026/053070 (153 WIPO member
-countries) with Turkish national priority TR 2025/012696 (September 4,
-2025). WIPO DAS access code: 3D2B.
 
-The patent covers the architectural principle of using temporal rate of
-change (ΔC/Δt) as the primary signal for autonomous hardware gating
-decisions within an integrated hardware decision chain. This protection
-extends to reimplementations in any hardware description language,
-circuit topology, or process node.
+3. NO PATENT LICENSE
+--------------------
+This license grants COPYRIGHT permissions only. NO license, express
+or implied, by estoppel or otherwise, is granted under any patent or
+patent application of Özcan Demirkıran or RPU Microelectronics,
+including but not limited to PCT/IB2026/053070 and TR 2025/012696.
+Practicing the patented architecture — in any hardware description
+language, circuit topology, or process node — for commercial purposes
+requires a written patent license, regardless of whether the files in
+this repository are used.
 
-The TÜRKPATENT official international search report has confirmed the
-novelty and inventive step of this architecture over:
-  - HP Memristor Patent US8450711B2 (May 2013)
-  - IBM Neuromorphic Architecture Patent US11144718B2 (October 2021)
 
-USE SUMMARY:
-  Research and evaluation:  Permitted under Apache 2.0
-  Academic publication:     Permitted (cite PCT/IB2026/053070)
-  Commercial use:           Requires written license agreement
-  Redistribution:           Permitted with this notice intact
+4. PATENT NOTICE
+----------------
+The architecture implemented in this repository is the subject of:
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  - Turkish national patent application TR 2025/012696
+    (priority date: 4 September 2025)
+  - International patent application PCT/IB2026/053070
+    (filed 27 March 2026, designating 153 PCT contracting states)
+
+The official TÜRKPATENT search report for the priority application
+cited no document in category X (a document that alone prejudices
+novelty); the claimed architecture was found novel over the searched
+art, including US8450711B2 (Hewlett-Packard) and US11144718B2 (IBM).
+International search and examination under the PCT are ongoing.
+
+The patent claims are drafted independently of implementation
+language, circuit topology, and process node.
+
+
+5. TRADEMARK
+------------
+"RPU", "RPC", and "Reflexive Processing Unit" are used as trade names
+of RPU Microelectronics. This license grants no trademark rights.
+
+
+6. DISCLAIMER OF WARRANTY AND LIABILITY
+---------------------------------------
+THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
+
+
+7. SUMMARY (non-binding convenience table)
+------------------------------------------
+  Research and evaluation:   Permitted, free
+  Academic publication:      Permitted (cite PCT/IB2026/053070)
+  Redistribution:            Permitted with notices intact,
+                             non-commercial purposes only
+  Commercial use:            Requires written license agreement
+  Patent rights:             NOT granted by this license
