@@ -4,7 +4,18 @@
 
 [![Patent](https://img.shields.io/badge/Patent-PCT%2FIB2026%2F053070-blue)](https://www.wipo.int)
 [![Silicon](https://img.shields.io/badge/Silicon-TSMC%2065nm%20%7C%20SKY130-green)](https://rpu-micro.com)
-[![License](https://img.shields.io/badge/License-Source--Available%20(evaluation%20free)-orange)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0%20(non--commercial)-orange)](LICENSE)
+
+---
+
+> ### 📋 Open issues affecting published results — read before citing any number
+>
+> We audit our own benchmarks and publish what we find.
+>
+> - **[Issue #1](#known-issues)** — The adaptive threshold does not engage with the default parameters. In our own Ibex benchmark the threshold pinned at `MIN_TH_P` and never moved (`th_min = th_max = 10` over 200k samples). Every published cycle figure below was produced in that state. **See [Threshold tuning](#threshold-tuning) before you integrate.**
+> - **[Issue #2](#known-issues)** — The published reductions use a *polling* baseline (CPU never sleeps) against a *WFI* RPU arm. Two variables differ. A fair control (WFI + comparator) is being measured.
+>
+> Full detail: **[Known issues](#known-issues)**. Corrected figures will be published whether or not they favour the RPU.
 
 ---
 
@@ -12,17 +23,17 @@
 
 Your processor right now wakes up on every clock cycle to check if sensor data has changed. Most of the time it has not. The RPU sits in parallel — it does not touch your data path — and monitors the incoming data stream in hardware. When nothing meaningful has changed, it keeps the CPU in deep sleep. When something actually changes, it fires a standard external interrupt. The CPU wakes in exactly 2 clock cycles and runs its existing ISR. Nothing in your existing RTL changes. No firmware changes. No pipeline modifications. Two read-only input taps. One interrupt output.
 
-**Measured result on lowRISC Ibex RISC-V over 5,000,004 simulation cycles: 99.998% reduction in active CPU cycles on stable data. 2-cycle wake-up latency. Zero false wake-ups. Zero missed events.**
+**Measured on lowRISC Ibex RISC-V over 5,000,004 simulation cycles: active CPU cycles reduced from 5,000,000 to 125 on stable data — a 99.998% reduction against a polling baseline.** See [Measured results](#measured-results) for what that figure does and does not include, and [Known issues](#known-issues) for the two known caveats.
 
 ---
 
 ## The problem this solves
 
-Every processor continuously burns energy confirming that data has not changed. A radar system confirming empty sky. A medical implant confirming a stable heartbeat. An edge AI camera confirming a static scene. An IoT sensor confirming an unchanged temperature reading. The processor wakes, checks, finds nothing, sleeps, wakes again. Millions of times per second.
+Every processor continuously burns energy confirming that data has not changed. A medical implant confirming a stable heartbeat. An IoT sensor confirming an unchanged temperature reading. A perimeter geophone confirming that nothing is walking past. The processor wakes, checks, finds nothing, sleeps, wakes again.
 
-This is not a firmware bug. It is the way Von Neumann architecture works — a processor cannot know whether data has changed without first waking up to check. Software PMUs, DVFS, and WFI+interrupt approaches reduce the waste at the margins, but none of them break the fundamental loop: the processor is still in the decision path.
+Software PMUs, DVFS, and WFI+interrupt approaches reduce the waste, but none of them remove the processor from the decision path. The RPU does: the decision happens in hardware, in a single combinational clock cycle, before any instruction executes.
 
-The RPU removes the processor from the decision entirely. The decision happens in hardware, in a single combinational clock cycle, before any instruction executes.
+**Where this actually pays off.** The RPU's decisive advantage over a plain fixed-threshold comparator is narrow and specific: **it is worth its area and power when the ambient noise floor varies over time.** A comparator calibrated for a quiet night either storms with false interrupts or goes blind when the wind picks up. If your noise floor is stable, a comparator with hysteresis is cheaper and just as good — use that instead. We would rather you know this up front than discover it after integration.
 
 ---
 
@@ -42,7 +53,7 @@ Start with the first two files.
 
 ## Run the simulation — copy and paste one of these
 
-No configuration needed. No parameters to change. The testbench has correct defaults. Pick your simulator and run.
+No configuration needed. The testbench has correct defaults. Pick your simulator and run.
 
 **Verilator (open source):**
 ```bash
@@ -104,17 +115,25 @@ RESULT: PASS — All tests passed. Errors=0
 
 ## Measured results
 
-| Scenario | Without RPU | With RPU | Reduction |
-|----------|-------------|----------|-----------|
-| Stable sensor data (IoT idle, radar empty sky, static scene) | 5,000,000 cycles | 125 cycles | **99.998%** |
+| Scenario | Baseline: polling firmware ¹ | With RPU | Reduction |
+|----------|------------------------------|----------|-----------|
+| Stable sensor data | 5,000,000 cycles | 125 cycles | **99.998%** |
 | Single anomaly in stable stream | 5,000,000 cycles | 338 cycles | **99.993%** |
 | Slow drift followed by large anomaly | 5,000,000 cycles | 1,487,143 cycles | **70.3%** |
 
-Wake-up latency across all scenarios: **2 clock cycles. Always. No jitter.**
-False wake-ups: **0** in scenarios 1 and 2.
-Missed events: **0** in any scenario.
-
 Platform: [lowRISC Ibex](https://github.com/lowRISC/ibex) RISC-V (RV32IMC) · Verilator · 5,000,004 total cycles.
+
+**¹ The baseline is a polling loop — the CPU never sleeps. The RPU arm uses WFI.** Two variables differ, so these figures include the contribution of WFI itself, which is substantial: any Ibex entering WFI reaches roughly 99% on stable data with an ordinary comparator driving the interrupt. **Treat these numbers as an upper bound on the RPU's contribution, not as the RPU's contribution.** A fair control arm (WFI + fixed-threshold comparator, in three competitor modes) is being measured now — [Issue #2](#known-issues).
+
+**² These runs used the default parameters, under which the threshold pinned at `MIN_TH_P = 10` and never adapted** (`th_min = th_max = 10` across the run). So they measure a *fixed* threshold of 10 against a signal whose half-window delta never exceeds 6.31. See [Issue #1](#known-issues) and [Threshold tuning](#threshold-tuning).
+
+**³ The 70.3% has the same root cause** — the drift produces a half-window delta of ≈ 8 against a threshold pinned at 10, so it chatters on the boundary. It is not a marginal case; it is the adaptation failing to engage.
+
+**Wake-up latency: 2 clock cycles for the *decision*.** This is the RPU's decision latency. It is not system wake-up: the core's WFI exit and any power-gate rail settling are separate and not controlled by the RPU. Note also that an analog comparator decides in *zero* cycles — faster than the RPU. The RPU's advantage here is not speed but **determinism**: it bypasses the NVIC, so the decision latency is fixed rather than variable (15–20+ cycles, load-dependent, for a Cortex-M NVIC entry).
+
+**False wake-ups: 0 in scenarios 1 and 2 — with the bounded uniform test noise used.** The stimulus uses `$urandom_range`, which is bounded and therefore has no tails, so the delta is mathematically capped. Real sensor noise is Gaussian. With Gaussian noise of σ = 8 and the same parameters we measure **209 false triggers**. Stimuli are being regenerated as Gaussian — [Issue #2](#known-issues).
+
+**Missed events: 0 in these scenarios.** Note that a missed-event count is only meaningful when the threshold is *below* the event delta. A threshold that ratchets above your events will report zero interrupts, which looks perfect and is a total false-negative. See the `MAX_TH_P` rule in [Threshold tuning](#threshold-tuning).
 
 ---
 
@@ -124,12 +143,34 @@ Platform: [lowRISC Ibex](https://github.com/lowRISC/ibex) RISC-V (RV32IMC) · Ve
 |-----------|-------------|-----------------|
 | Frequency | 625 MHz | 100 MHz |
 | Worst Negative Slack | 0 ps | 0 ps |
-| Total power | 1.70 mW | 3.876 mW |
+| Total power | 1.702 mW ¹ | 3.876 mW |
 | Leakage power | 0.178 mW | 0.014 mW |
+| Total cell area | 18,062 µm² ² | — |
 | Gate count | 2,960 | equivalent |
 | Synthesis tool | Cadence Genus | Cadence Genus |
 
 Both nodes: full timing closure, zero violations. Same RTL file.
+
+**¹ 1.702 mW is measured at 625 MHz.** In a sensor-rate deployment the dynamic component scales down roughly with frequency and only leakage remains, so the realistic standing cost is closer to **~0.18 mW**. This matters for the break-even condition below. A frequency sweep (625 MHz / 10 MHz / 1 MHz / 100 kHz) is being measured — [Issue #5](#known-issues).
+
+**² 18,062 µm² is the total cell area** (12,989.52 combinational + 5,072.60 sequential). Earlier documents quoted 12,990 µm², which is a component and not the total.
+
+### Break-even
+
+The RPU is not free. It is profitable when:
+
+```
+S  >  P_R / (P_F − P_idle)
+```
+
+where `S` is sparsity (the fraction of time your data is stationary), `P_R` is the RPU's own power, and `P_F` is the active power of the block it gates.
+
+| RPU clock | P_R | Break-even sparsity |
+|---|---|---|
+| 625 MHz | 1.702 mW | S > 0.36 |
+| 1 MHz | ~0.18 mW | **S > 0.04** |
+
+**If your data changes on most samples (S ≈ 0), the RPU is a net energy loss.** It will find nothing to gate while still burning its own power. Continuous video, servo control loops, batch tensor streams, and scrambled serial links all fall in this regime. Don't use it there.
 
 ---
 
@@ -142,30 +183,41 @@ Both nodes: full timing closure, zero violations. Same RTL file.
 | `scan_en` | In | 1 | DFT scan enable. Tie to `0` if not used. |
 | `in_data` | In | 12 | Read-only tap from existing sensor or ADC output. Nothing upstream changes. |
 | `in_valid` | In | 1 | Read-only tap from existing data valid strobe. Nothing upstream changes. |
-| `wake_en` | Out | 1 | **The only output you need.** Pulses high for 1 cycle when data change exceeds threshold. Connect to your interrupt controller. CPU exits WFI in 2 cycles. |
+| `wake_en` | Out | 1 | **The only output you need.** Pulses high for 1 cycle when data change exceeds threshold. Connect to your interrupt controller. |
 | `rpu_event_pulse` | Out | 1 | Same as wake_en. Leave unconnected on first integration. |
 | `rpu_state` | Out | 1 | Toggle FF, flips on every event. Debug use only. |
 | `gclk_out` | Out | 1 | Gated clock output. Leave unconnected on first integration. |
 | `full_status` | Out | 1 | High when ring buffer is full. Debug use only. |
-| `delta_abs_dbg` | Out | 12 | Current `\|avg_new − avg_old\|`. Debug use only. |
-| `threshold_dbg` | Out | 12 | Current active threshold. Debug use only. |
+| `delta_abs_dbg` | Out | 12 | Current `\|avg_new − avg_old\|`. **Log this during bring-up.** |
+| `threshold_dbg` | Out | 12 | Current active threshold. **Log this during bring-up — see [Step 4](#step-4-verify-adaptation-actually-engaged).** |
 | `guardian_alert` | Out | 1 | 1-cycle pulse on threshold crossing. Runs on ungated clock. |
 | `guardian_last_data` | Out | 12 | Last captured input sample. |
 | `guardian_last_delta` | Out | 12 | Last captured delta value. |
 | `guardian_last_th` | Out | 12 | Last captured threshold value. |
 
 **For simulation:** the testbench wires everything up automatically.
-**For integration:** you only need `wake_en`. Everything else can be left unconnected.
+**For integration:** you only need `wake_en` — but log `delta_abs_dbg` and `threshold_dbg` on your first run. They are how you find out whether your parameters are right.
 
 ---
 
 ## RTL instantiation
 
+> ### ⚠️ Do not copy these parameters without reading [Threshold tuning](#threshold-tuning)
+>
+> **The defaults do not engage the adaptive threshold for most real signals.** If your signal's half-window delta falls below `LO_DELTA_P`, the threshold decrements on every sample and pins at `MIN_TH_P`, where it stays for the rest of the run. You get a fixed threshold while believing you have an adaptive one.
+>
+> We measured exactly this on our own Ibex benchmark: with the values below and a signal whose half-window delta averages 1.30, `threshold_dbg` reported `th_min = th_max = 10` across 200,000 samples. It never moved.
+>
+> The defaults assume a delta range of roughly 20–200. Averaging over `DEPTH/2 = 16` samples means **most sensor signals produce a delta of 1–10.** Compute yours first.
+
 ```systemverilog
 rpu_ultimate_final #(
-  .DATA_WIDTH     (12),    // change to match your sensor or ADC output width
+  .DATA_WIDTH     (12),    // match your ADC width
   .DEPTH          (32),    // sliding window depth — must be power-of-two and even
-  .USE_DYNAMIC_TH (1'b1),  // adaptive threshold — recommended for real sensors
+  .USE_DYNAMIC_TH (1'b1),  // adaptive threshold — requires tuning, see below
+
+  // These values MUST be computed from your signal. See Threshold tuning.
+  // The values below are the historical defaults and are NOT a starting point.
   .MIN_TH_P       (10),
   .MAX_TH_P       (2000),
   .STEP_UP_P      (5),
@@ -184,16 +236,17 @@ rpu_ultimate_final #(
   // Connect to your interrupt controller
   // RISC-V: irq_external_i or any PLIC source line
   // ARM Cortex-M: any NVIC line
-  // Custom: any level-triggered interrupt input
   .wake_en  (rpu_wake),
+
+  // Log these two on your first run — they tell you if your tuning is right
+  .delta_abs_dbg   (dbg_delta),
+  .threshold_dbg   (dbg_th),
 
   // Leave unconnected on first integration
   .rpu_event_pulse (),
   .rpu_state       (),
   .gclk_out        (),
   .full_status     (),
-  .delta_abs_dbg   (),
-  .threshold_dbg   (),
   .guardian_alert      (),
   .guardian_last_data  (),
   .guardian_last_delta (),
@@ -207,38 +260,144 @@ rpu_ultimate_final #(
 
 ## How it works internally
 
-1. Maintains a circular ring buffer of the last 32 input samples.
-2. Splits the buffer into two halves. Computes a running average of each half using bit-shifts only — no hardware divider, no multiplier.
+1. Maintains a circular ring buffer of the last `DEPTH` input samples.
+2. Splits the buffer into two halves. Maintains a running sum of each half, so the average of each half is available in **O(1)** — constant time regardless of `DEPTH`, using bit-shifts only. No divider, no multiplier.
 3. Calculates `delta = |avg_new − avg_old|`.
 4. If `delta > threshold`: asserts `wake_en` for one clock cycle.
-5. Adaptive threshold engine adjusts automatically — rises in noisy environments, drops in quiet ones.
+5. The policy engine adjusts the threshold: it steps **up** when `delta > HI_DELTA_P` and **down** when `delta < LO_DELTA_P`.
 
-The entire decision path (steps 2–4) is fully combinational. No program counter. No instruction memory. No bus transaction. Decision completes within one clock cycle.
+The decision path (steps 2–4) is fully combinational. No program counter. No instruction memory. No bus transaction.
+
+**Understand step 5 before you rely on it.** `HI_DELTA_P` and `LO_DELTA_P` are **fixed constants**, and the threshold does not feed back into the delta. The loop is therefore **open** and has no equilibrium. It has exactly three behaviours:
+
+| Condition | Behaviour |
+|---|---|
+| `delta < LO_DELTA_P` | decrements **every sample** → pins at `MIN_TH_P` |
+| `LO_DELTA_P < delta < HI_DELTA_P` | frozen — **no adaptation at all** |
+| `delta > HI_DELTA_P` | increments **every sample** → pins at `MAX_TH_P` |
+
+For the threshold to be usefully adaptive, **your delta must live inside the `[LO_DELTA_P, HI_DELTA_P]` band and move around within it.** If it sits permanently on one side, the threshold rails and stops adapting. This is the single most important thing to understand about tuning this block, and it is why the next section exists.
+
+---
+
+## Threshold tuning
+
+**Read this before integrating.** The RPU compares `|avg(newer half) − avg(older half)|` against its threshold. With `DEPTH = 32`, each half is 16 samples. The averaging suppresses noise heavily, so **the delta your RPU sees is much smaller than your raw signal noise.** This is the most common tuning mistake and it is the one we made ourselves.
+
+### Step 1 — compute your signal's delta range
+
+For white noise of standard deviation σ:
+
+```
+δ_noise ≈ 1.6 × σ / √DEPTH
+```
+
+For an event of amplitude A lasting L samples (L ≤ DEPTH/2):
+
+```
+δ_event ≈ 2 × A × L / DEPTH
+```
+
+**Worked example — our own Ibex Case-1 stimulus** (`in_data = 70 + urandom_range(0,15) - 5`, i.e. uniform 65–80, σ = 4.61, DEPTH = 32):
+
+```
+δ_noise ≈ 1.6 × 4.61 / 5.657 = 1.30      (measured: 1.30 — the formula holds)
+```
+
+The defaults set `LO_DELTA_P = 20`. Since 1.30 < 20 on every single sample, the threshold decremented continuously and pinned at `MIN_TH_P = 10`. **That is [Issue #1](#known-issues), and it is why every figure in our results table measures a fixed threshold.**
+
+### Step 2 — check the problem is solvable at all
+
+```
+δ_event / δ_noise   must be  > ~3
+```
+
+Below that ratio, the event is buried in the noise floor and **no threshold detector can separate them** — not this one, not a comparator, not CFAR. That is physics, not an implementation limit. If your ratio is under 3 you need a different front end (matched filter, correlation, longer integration), and the RPU's premise — *decide before processing* — does not apply to your problem.
+
+### Step 3 — set the parameters
+
+| Parameter | Rule | Why |
+|---|---|---|
+| `LO_DELTA_P` | `≈ 0.5 × δ_noise` | Must be **below** your typical delta, or the threshold ratchets down and pins at `MIN_TH_P` |
+| `HI_DELTA_P` | `≈ 2 × δ_noise` | Must be **reachable** by your noise delta, or the threshold never rises |
+| `MIN_TH_P` | `≈ 3 × δ_noise` | Floor. Keeps the noise from triggering |
+| `MAX_TH_P` | `≈ 0.5 × δ_event` | **Ceiling. Critical — see below.** |
+| `STEP_UP_P` / `STEP_DN_P` | 1–3 | `STEP_UP > STEP_DN` gives fast-attack / slow-decay — good for bursty noise |
+
+**`MAX_TH_P` is the trap in the other direction.** If the threshold can rise above `δ_event`, it will ratchet up during noisy periods and **go blind to real events.** We measured a parameter set that produced **zero interrupts** on a rising-noise stimulus — which looks perfect until you check `th_avg = 465` against an event delta of 150. The threshold had climbed above the signal and missed every genuine event. **Zero interrupts on a stimulus containing events is a total false-negative, not a success.**
+
+**Worked example, continued.** For δ_noise = 1.30:
+
+```systemverilog
+.MIN_TH_P   (5),     // ≈ 3 × 1.30
+.MAX_TH_P   (100),   // ≈ 0.5 × your δ_event
+.STEP_UP_P  (1),
+.STEP_DN_P  (1),
+.HI_DELTA_P (3),     // ≈ 2 × 1.30
+.LO_DELTA_P (1)      // ≈ 0.5 × 1.30
+```
+
+Measured on the same stimulus: `th_min = 5, th_max = 100` — **the threshold is alive and tracking.** Compare with the defaults on identical data: `th_min = th_max = 10`.
+
+### Step 4 — verify adaptation actually engaged
+
+**Log `threshold_dbg` min / avg / max over your run. Every time.**
+
+```
+th_min == th_max   →   the adaptation NEVER ENGAGED.
+                       You are measuring a fixed threshold.
+                       Go back to Step 1.
+```
+
+This one check is how we found [Issue #1](#known-issues) in our own benchmark. It costs one line of testbench code and it will save you from publishing a number that means something other than what you think it means.
+
+### Known limitation — noise floors that move a lot
+
+Because `HI_DELTA_P` and `LO_DELTA_P` are fixed, the usable adaptation range is bounded by the dead band you configure. If your noise floor varies by more than roughly **4×** over time, your delta will leave the band and the threshold will rail to `MIN_TH_P` or `MAX_TH_P`.
+
+This is worth stating plainly because it collides with the RPU's own selling point: the case where an adaptive threshold beats a comparator is *precisely* the case where the noise floor moves. **In its current form the block is calibration-sensitive, not calibration-free, for exactly that scenario.**
+
+**Work in progress.** A proportional-setpoint variant closes the loop:
+
+```
+hi_ref = threshold × K_HI / 16     (K_HI = 24 → 1.5×)
+lo_ref = threshold × K_LO / 16     (K_LO = 8  → 0.5×)
+```
+
+Shift-only, no divider, ~30 gates. Implemented and measured: the threshold now **tracks** (`th_min = 20 → th_max = 138`) where the fixed version pinned or railed. **It is not a complete fix yet** — the loop settles at `delta ≈ threshold`, so the threshold sits *at* the noise rather than above it, and a separate α margin (as CFAR uses, α ≈ 2–4) is still needed. Progress: [Issue #1](#known-issues).
+
+**Prior-art note, stated plainly:** proportional thresholding against a local noise estimate is what CFAR has done in radar since 1968. The principle is not novel and we do not claim it. What is specific to this design is the O(1) split-window arithmetic that fits it into 2,960 gates **ahead of the processor**, rather than in a DSP after the ADC.
 
 ---
 
 ## Parameters
 
-| Parameter | Default | When to change |
-|-----------|---------|----------------|
+| Parameter | Default | Notes |
+|-----------|---------|-------|
 | `DATA_WIDTH` | 12 | Match to your sensor output width. 8-bit ADC → set to 8. |
-| `DEPTH` | 32 | Larger = more smoothing, slower drift response. Must be power-of-two and even. **If increasing DEPTH beyond 32, verify that SUM_W (DATA_WIDTH + log₂(DEPTH)) does not overflow the accumulator registers.** |
-| `USE_DYNAMIC_TH` | 1 | Set to 0 for fixed threshold (safety-critical paths). |
-| `FIXED_TH` | 100 | Used only when USE_DYNAMIC_TH = 0. |
-| `MIN_TH_P` | 10 | Threshold floor. |
-| `MAX_TH_P` | 2000 | Threshold ceiling. |
-| `STEP_UP_P` | 5 | Threshold rise aggressiveness in noisy environments. |
-| `STEP_DN_P` | 5 | Threshold drop aggressiveness in quiet environments. |
-| `HI_DELTA_P` | 200 | Delta level above which threshold starts stepping up. |
-| `LO_DELTA_P` | 20 | Delta level below which threshold starts stepping down. |
+| `DEPTH` | 32 | Larger = more smoothing, slower drift response, **smaller delta**. Must be power-of-two and even. If increasing beyond 32, verify `SUM_W` (`DATA_WIDTH + log₂(DEPTH)`) does not overflow the accumulators. |
+| `USE_DYNAMIC_TH` | 1 | Set to 0 for a fixed threshold. **Note: if your parameters are wrong, `1` behaves like `0` anyway** — see [Issue #1](#known-issues). |
+| `FIXED_TH` | 100 | Used only when `USE_DYNAMIC_TH = 0`. |
+| `MIN_TH_P` | 10 | Threshold floor. **Set to ≈ 3 × δ_noise.** |
+| `MAX_TH_P` | 2000 | Threshold ceiling. **Set to ≈ 0.5 × δ_event.** If this exceeds your event delta, the threshold can ratchet above real events and miss them. |
+| `STEP_UP_P` | 5 | Rise aggressiveness. |
+| `STEP_DN_P` | 5 | Decay aggressiveness. |
+| `HI_DELTA_P` | 200 | Delta above which the threshold steps up. **Must be reachable by your noise delta (≈ 2 × δ_noise) or the threshold never rises.** |
+| `LO_DELTA_P` | 20 | Delta below which the threshold steps down. **Must be below your typical delta (≈ 0.5 × δ_noise) or the threshold pins at `MIN_TH_P`.** |
+
+> **The defaults are not a starting point for real signals.** They assume a delta range of 20–200. See [Threshold tuning](#threshold-tuning).
 
 ---
 
 ## Notes on Guardian Sideband
 
-The Guardian Sideband (Module 107) runs on an **ungated clock** by design — this is intentional. Its purpose is to remain observable even when the main clock is fully gated, which is essential for watchdog compliance in safety-critical applications (defense, automotive, medical).
+The Guardian Sideband (Module 107) runs on an **ungated clock** by design. Its purpose is to remain observable even when the main clock is fully gated, which is essential for watchdog compliance in safety-critical applications (defense, automotive, medical).
 
-This means the Guardian continuously consumes a small amount of static power regardless of main clock state. For applications where Guardian observability is not required, the module can be excluded from synthesis by removing the instantiation — the core wake_en functionality is unaffected.
+This means the Guardian continuously consumes a small amount of static power regardless of main clock state. For applications where Guardian observability is not required, the module can be excluded from synthesis by removing the instantiation — the core `wake_en` functionality is unaffected.
+
+**Note on scope:** the Guardian observes the *RPU*. It does not detect a dead or frozen *sensor* — that requires a separate inactivity check (`delta < floor` sustained over N samples), which is not implemented in this release.
+
+---
 
 ## What is not in this repository
 
@@ -246,7 +405,7 @@ This means the Guardian continuously consumes a small amount of static power reg
 
 **Full ASIC PPA reports:** Available on request. Cadence Genus synthesis at TSMC 65nm and SkyWater SKY130.
 
-**RISC-V Ibex SoC testbench:** Available on request. Complete lowRISC SoC environment where the 99.998% cycle reduction was measured.
+**RISC-V Ibex SoC testbench:** Available on request. Complete lowRISC SoC environment where the cycle reductions were measured. **Note the two caveats in [Known issues](#known-issues) before using those numbers.**
 
 ---
 
@@ -254,106 +413,153 @@ This means the Guardian continuously consumes a small amount of static power reg
 
 **"We already use WFI and interrupts — isn't that the same thing?"**
 
-WFI + interrupt is a good system and sufficient for many applications. The RPU addresses three specific gaps: (1) Standard interrupts fire on every signal transition including noise and drift — the RPU applies a rate-of-change threshold in hardware so false wake-ups are suppressed before they reach the interrupt pin. (2) ARM Cortex-M NVIC entry takes 15–20 cycles minimum. The RPU decision is combinational — always 2 cycles, guaranteed. (3) Interrupt timing is non-deterministic if the CPU is executing another task. The RPU is hardware-native so 2 cycles is constant regardless of CPU state.
+Largely, yes — and honestly, for many applications WFI + a comparator is sufficient and cheaper. The RPU addresses three specific gaps. (1) **Determinism:** Cortex-M NVIC entry takes 15–20 cycles minimum and is load-dependent; the RPU decision is combinational and fixed. For DO-254 / ISO 26262 work, a fixed latency you can prove beats a variable one you have to bound. (2) **Rate-of-change instead of level:** a single noisy spike looks different from a sustained change, because the decision uses a sliding window rather than an instantaneous value. (3) **Adaptive threshold:** the threshold can track a changing noise floor, where a fixed comparator either storms or goes blind.
 
-**"We already have smart sensors and DMA controllers."**
-
-Smart sensors and DMA reduce CPU involvement but do not eliminate switching activity. When a smart sensor detects activity it raises an interrupt, DMA moves data to memory, and eventually the CPU processes it. Even during stagnant periods, the clock tree is still running, the bus is still toggling, and buffers are still switching. The RPU operates before data reaches the bus — when data is unchanged, downstream switching activity is suppressed at the source, not just CPU wake-ups.
-
-**"We already use DVFS and PMU."**
-
-DVFS and PMU operate through software layers with millisecond-scale latency and no data-change awareness. They reduce power when the OS decides to reduce it. The RPU reduces power when the data is actually stagnant — in hardware, before any software is involved. The two approaches are complementary, not competing.
+Be aware that (3) is [Issue #1](#known-issues) — in its current form the adaptation is bounded by the dead band you configure, and it rails outside it. Read [Threshold tuning](#threshold-tuning). And note that gap (3) is also the only one that makes the RPU decisively better than a good comparator, so it matters.
 
 **"Can't a simple comparator do this?"**
 
-A fixed-threshold comparator wakes the CPU whenever the signal crosses a threshold — including noise, drift, and meaningless fluctuations. The RPU measures the rate of change over a sliding window, so a single noisy spike looks different from a genuine sustained change. The adaptive threshold engine automatically adjusts — rising in noisy environments, falling in quiet ones — without software involvement.
+For a stable noise floor: **yes, and it is cheaper.** A comparator with Schmitt hysteresis is a handful of transistors and will match the RPU on stationary data, on spikes, and — if you give it an EWMA baseline tracker — on slow drift too. We have measured this against our own block and we are not going to pretend otherwise.
+
+The comparator fails in one specific place: when the **ambient noise amplitude changes over time.** A level-triggered comparator then asserts continuously (interrupt storm); an edge-triggered one fires once and goes blind to the new regime. An EWMA tracks the signal *mean*, not the *noise floor*, so it does not save you. That is the case the RPU is for. If your noise floor is stable, use the comparator.
+
+**"We already have smart sensors and DMA controllers."**
+
+Smart sensors (ADXL362, LIS2DH, BMA400 and similar) have threshold registers and will keep your CPU asleep for months. If one exists for your transducer, **use it — it costs a dollar and it works.** Their thresholds are fixed registers, so they need software recalibration when the environment shifts; that is the gap. The RPU's real territory is transducers for which no smart part exists: geophones, hydrophones, FBG strain sensors, custom piezo.
+
+**"We already use DVFS and PMU."**
+
+DVFS and PMU operate through software layers with millisecond-scale latency and no data-change awareness. They reduce power when the OS decides to. The RPU reduces power when the data is actually stagnant, in hardware, before any software is involved. Complementary, not competing.
 
 **"What if I need to remove it later?"**
 
-Disconnect wake_en or remove the instantiation entirely. The system reverts to conventional polling with zero latency difference and zero data loss. The RPU is strictly parallel and not in the critical data path. There is no failure mode where removing the RPU makes your system worse than it was before.
+Disconnect `wake_en` or remove the instantiation. The system reverts to conventional polling with zero latency difference and zero data loss. The RPU is strictly parallel and not in the critical data path.
 
 **"Does DEPTH affect wake-up latency?"**
 
-No. DEPTH only controls the sliding window size — how many samples are used to compute the delta. Regardless of DEPTH (32, 64, 128, or any valid value), the combinational decision path is identical and the processor always wakes in exactly 2 clock cycles.
+No. `DEPTH` only controls the sliding window size. The combinational decision path is identical for any valid `DEPTH`. It does, however, affect your **delta magnitude** (`δ ∝ 1/√DEPTH` for noise) — so if you change `DEPTH`, you must retune `HI_DELTA_P` / `LO_DELTA_P`.
 
 **"Does it work with ARM Cortex-M?"**
 
-Yes. Connect wake_en to any NVIC line. The CPU sees a standard level-triggered external interrupt and runs the existing ISR unchanged. No firmware modifications required.
+Yes. Connect `wake_en` to any NVIC line. The CPU sees a standard external interrupt and runs the existing ISR unchanged.
 
 **"Is the 99.998% number real or modeled?"**
 
-It is a physical measurement. lowRISC Ibex RISC-V core, Verilator simulator, 5,000,004 clock cycles, stable sensor data scenario. 5,000,000 baseline active cycles reduced to 125 with the RPU connected. The testbench is in this repository — run it yourself and see the same output.
+It is a real simulation measurement — lowRISC Ibex, Verilator, 5,000,004 cycles, 5,000,000 baseline active cycles reduced to 125. **But read what it measures.** The baseline is a polling loop that never sleeps, and the RPU arm uses WFI, so the figure includes WFI's contribution ([Issue #2](#known-issues)). And the run used default parameters under which the threshold pinned at 10 and never adapted ([Issue #1](#known-issues)) — so it measures a fixed threshold of 10 against a signal whose delta never exceeds 6.31.
 
-**"What about multi-bit or wide data buses?"**
+A fair control arm is being measured now, with Gaussian stimuli and a properly calibrated threshold. **The corrected number will be smaller, and we will publish it.**
 
-Set DATA_WIDTH to match your bus width. The architecture scales automatically — the delta computation uses bit-shift operations that are width-independent. Verify SUM_W headroom when DATA_WIDTH exceeds 12.
+**"Why are you telling me all this?"**
+
+Because the repository is public, the reproduction takes an afternoon, and a number that means something other than what you think it means is worse than no number. We would rather you find our caveats in our own README than in your own bring-up lab.
+
+---
 
 ## Advanced integration notes
 
-**SRAM macro substitution:** The ring buffer (Module 102) is implemented as flip-flop registers by default. At tape-out, replacing the register array with an SRAM macro reduces sequential cell area proportionally — the RTL interface is unchanged, only the state store implementation is swapped. This is particularly beneficial at DEPTH ≥ 64.
+**SRAM macro substitution:** The ring buffer (Module 102) is implemented as flip-flop registers by default and accounts for roughly 60% of the gate count. At tape-out, replacing it with an SRAM macro reduces sequential cell area proportionally — the RTL interface is unchanged. Particularly beneficial at `DEPTH ≥ 64`.
 
-**DATA_WIDTH:** Default is 12-bit (matching a 12-bit ADC). Set to 8 for 8-bit sensors, 16 for 16-bit ADCs. The entire datapath scales automatically. SUM_W adjusts accordingly — verify accumulator headroom when widening.
+**DATA_WIDTH:** Default 12-bit. The datapath scales automatically; verify `SUM_W` headroom when widening beyond 12.
 
-**Multi-clock domain:** The RPU operates in a single clock domain. If your sensor interface and processor run on different clocks, add a standard 2-FF synchronizer on in_data/in_valid before the RPU input. wake_en output to the interrupt controller is a level signal and can be synchronized similarly.
+**Multi-clock domain:** Single clock domain. If your sensor interface and processor run on different clocks, add a standard 2-FF synchronizer on `in_data` / `in_valid`.
 
-**Reset synchronization:** rst_n is asynchronous active-low. In systems with a synchronous reset domain, add a reset synchronizer cell before driving rst_n. This is standard practice and does not affect functionality.
+**Reset synchronization:** `rst_n` is asynchronous active-low. Add a reset synchronizer cell in a synchronous reset domain.
 
-**DFT / scan:** scan_en is provided for full-scan insertion. Tie to 0 in functional mode. Connect to your scan chain enable in DFT mode — no special handling required beyond standard scan methodology.
+**DFT / scan:** `scan_en` is provided for full-scan insertion. Tie to 0 in functional mode.
 
-**Power gating:** The wake_en output can drive a sleep transistor gate directly (header or footer) in addition to the interrupt controller. When delta is below threshold, wake_en = 0 and the sleep transistor physically cuts power to downstream logic. This is the full power gating path described in the patent.
+**Power gating:** `wake_en` can drive a sleep transistor gate directly in addition to the interrupt controller. Note that power-gate exit costs 10–100 ns of rail settling, which is separate from and much larger than the RPU's 2-cycle decision latency — budget for it.
 
-**Area scaling at advanced nodes:** At 28nm and below, the same RTL synthesizes to significantly smaller area while maintaining functional equivalence. The 2,960-gate figure is specific to TSMC 65nm. Expect roughly 40-50% area reduction per node generation.
+**Area scaling at advanced nodes:** The 18,062 µm² / 2,960-gate figure is specific to TSMC 65nm.
+
+---
 
 ## Known design trade-offs
 
-> **Note on DEPTH and wake-up latency:** The DEPTH parameter only affects the sliding window size — how many samples are used to compute the delta. It does not affect the wake-up latency. Regardless of DEPTH (32, 64, 128, or any valid value), the combinational decision path is identical and the processor always wakes in exactly 2 clock cycles.
-
 | Trade-off | Detail | Impact |
 |-----------|--------|--------|
+| **Dead band in the policy engine** | No adjustment when `LO_DELTA_P < delta < HI_DELTA_P` | **This is where the threshold holds — and also where it stops adapting.** The band must bracket your delta range: too narrow and the threshold rails; wide enough to never rail and it never adapts. See [Issue #1](#known-issues). Previously documented as an "intentional stability band"; that framing was too generous. |
 | Guardian ungated clock | Runs continuously for watchdog compliance | Small static power overhead |
-| 2-stage pipeline | Stage-A captures, Stage-B computes delta | 2-cycle latency by design (not a bug) |
-| Accumulator width | SUM_W = DATA_WIDTH + log₂(DEPTH/2) | Must be verified when DEPTH > 32 |
-| Dead zone in adaptive threshold | No adjustment when LO_DELTA < delta < HI_DELTA | Intentional stability band — prevents threshold oscillation on borderline signals |
+| 2-stage pipeline | Stage-A captures, Stage-B computes delta | 2-cycle decision latency by design |
+| Accumulator width | `SUM_W = DATA_WIDTH + log₂(DEPTH/2)` | Verify when `DEPTH > 32` |
+| Area | 18,062 µm² against an Ibex at ~20k gates | **≈ 13–15% area increase.** Small in absolute terms, not negligible relative to the core it protects |
+| Standing power | 1.702 mW at 625 MHz | Scales down to ~0.18 mW at sensor rates. **Below the break-even sparsity it is a net loss** |
 
-**Tuning for slow drift applications (Scenario 3 optimization):** The default parameters (HI_DELTA=200, LO_DELTA=20) create a wide dead zone that prioritizes stability over sensitivity. In applications with gradual environmental drift — temperature sensors, pressure monitors, slowly varying signals — narrowing the dead zone improves suppression:
+**Correction — previous tuning advice was wrong.** An earlier revision of this README recommended `HI_DELTA_P = 80, LO_DELTA_P = 40` as an optimization for slow-drift applications. **We tested it: it produces exactly the same result as the defaults** (`th_min = th_max = 10`), because the signal's delta of 1.30 is still far below `LO_DELTA_P = 40`. The threshold still pins. That advice has been removed and replaced by [Threshold tuning](#threshold-tuning), which computes the parameters from your actual signal instead of guessing.
 
-```systemverilog
-// Default (stable environments, noise-heavy signals)
-.HI_DELTA_P (200),
-.LO_DELTA_P (20),
+---
 
-// Optimized for slow drift detection
-.HI_DELTA_P (80),   // Threshold steps up sooner in noisy conditions
-.LO_DELTA_P (40),   // Threshold steps down sooner when signal quiets
-.STEP_UP_P  (10),   // Faster desensitization
-.STEP_DN_P  (3),    // Slower resensitization (conservative)
+---
+
+## Known issues
+
+We audit our own benchmarks and publish what we find. These affect the numbers in [Measured results](#measured-results). Corrected figures will be published whether or not they favour the RPU.
+
+### Issue #1 — Adaptive threshold does not engage with the default parameters
+
+**Status:** confirmed, root-caused, fix in progress.
+**Severity:** affects every published cycle-reduction figure.
+
+`HI_DELTA_P` and `LO_DELTA_P` are fixed constants and the threshold does not feed back into the delta, so the policy engine is an **open-loop integrator with a constant reference.** It has no equilibrium and only three behaviours:
+
+1. `delta < LO_DELTA_P` → decrements every sample → pins at `MIN_TH_P`
+2. `LO_DELTA_P < delta < HI_DELTA_P` → frozen (dead band), no adaptation
+3. `delta > HI_DELTA_P` → increments every sample → pins at `MAX_TH_P`
+
+**Measured** (200k samples, defaults, `in_data = 70 + urandom_range(0,15) - 5`):
+
+```
+half-window delta:   mean = 1.30   max = 6.31
+threshold:           th_min = 10   th_max = 10     <-- never moves
 ```
 
-This trades some stability for faster adaptation to drifting baselines. The 70.3% result in Scenario 3 (slow drift + large anomaly) reflects the default conservative tuning — with narrow dead zone parameters, this scenario improves significantly.
+**Workaround:** tune `LO_DELTA_P < δ_noise < HI_DELTA_P` — see [Threshold tuning](#threshold-tuning). Verified: `MIN_TH_P=5, HI_DELTA_P=3, LO_DELTA_P=1` on the same stimulus gives `th_min=5, th_max=100`.
+
+**Proposed fix:** proportional setpoints, `hi_ref = threshold × K_HI / 16`, `lo_ref = threshold × K_LO / 16`. Shift-only, ~30 gates, no divider. Implemented and measured: the threshold now tracks (`th_min=20 → th_max=138`) where the fixed version pinned or railed. **Not a complete fix yet** — the loop settles at `delta ≈ threshold`, so the threshold sits *at* the noise rather than above it. A separate α margin (as CFAR uses, α ≈ 2–4) is needed.
+
+### Issue #2 — Published cycle reductions use a polling baseline
+
+**Status:** confirmed, re-measurement in progress.
+
+The baseline firmware never sleeps; the RPU arm uses WFI. Two variables changed at once, so the published figures include WFI's contribution. Any Ibex entering WFI reaches ~99% on stable data with an ordinary comparator driving the interrupt.
+
+A fair control arm — **Ibex + WFI + fixed-threshold comparator with hysteresis** — is being built and measured, in three competitor modes (absolute, simple delta, and EWMA baseline-tracking) and both trigger styles (edge and level).
+
+### Issue #3 — Test noise is uniform, so it has no tails
+
+`$urandom_range` is bounded, so the delta is mathematically capped. Real sensor noise is Gaussian. With Gaussian σ = 8 and the same parameters the RPU produces **209 false triggers** on stationary data, where an EWMA comparator produces zero. Stimuli are being regenerated as Gaussian.
+
+### Issue #4 — Area figure was understated
+
+Earlier documents quoted 12,990 µm² (TSMC 65nm). The PPA report's total is **18,062.12 µm²** (12,989.52 combinational + 5,072.60 sequential). The lower figure is a component, not the total. Corrected above.
+
+### Issue #5 — Standing power is quoted at maximum frequency
+
+1.702 mW is measured at 625 MHz. In a sensor-rate deployment the dynamic component scales down with frequency and only leakage (0.178 mW) remains, so the realistic standing cost is closer to **~0.18 mW** — roughly 10× better than we have been reporting. A frequency sweep (625 MHz / 10 MHz / 1 MHz / 100 kHz) is being measured. See [Break-even](#break-even) for why this matters.
+
+---
 
 ## License
 
-This repository is released under the **RPU Source-Available License v1.0** (see LICENSE).
+This RTL is released for **research and evaluation purposes only**.
+
+This is **not** a standard Apache 2.0 license. The LICENSE file in this repository is Apache 2.0 with a commercial use restriction added.
 
 - Research, academic, and evaluation use: **free**
-- Redistribution with notices intact, for non-commercial purposes: **permitted**
-- Commercial use (SoC integration, tape-out, product deployment, resale as IP): **requires a written license agreement**
-- Patent rights: **not granted by the source license** — copyright permission and patent permission are separate
+- Commercial use (SoC integration, tape-out, product deployment): **requires a written license agreement**
 
-The underlying architecture is the subject of international patent application PCT/IB2026/053070 (153 PCT contracting states; Turkish priority TR 2025/012696, 4 September 2025). The claims are drafted independently of implementation language, circuit topology, and process node — a reimplementation in a different HDL or at a different node can still fall within the claimed scope. If you are evaluating the RPU for a commercial product, talk to us early; evaluation is free and we will tell you plainly what is and is not covered.
+Contact ozcan.demirkiran@rpu-micro.com for commercial licensing.
 
-For commercial licensing inquiries: ozcan.demirkiran@rpu-micro.com
+The underlying architecture is the subject of international patent application PCT/IB2026/053070 (pending). The application covers the architectural principle — using temporal rate of change (ΔC/Δt) as the primary signal for autonomous hardware gating decisions.
 
 ---
 
 ## Contact
 
-**Özcan Demirkıran** — Founder & Principal Architect  
-RPU Microelectronics · Kocaeli, Turkey  
-ozcan.demirkiran@rpu-micro.com  
-+90 536 636 10 72  
-[rpu-micro.com](https://rpu-micro.com)  
+**Özcan Demirkıran** — Founder & Principal Architect
+RPU Microelectronics · Kocaeli, Turkey
+ozcan.demirkiran@rpu-micro.com
++90 536 636 10 72
+[rpu-micro.com](https://rpu-micro.com)
 
-Patent: PCT/IB2026/053070 · TR 2025/012696  
-TÜRKPATENT search report: no novelty-destroying (category X) citation over the searched art, including HP US8450711B2 and IBM US11144718B2. PCT international examination ongoing.  
+Patent: PCT/IB2026/053070 (pending) · TR 2025/012696 (pending)
 GitHub: [github.com/Rpu-Microelectronics/rpu-microelectronics](https://github.com/Rpu-Microelectronics/rpu-microelectronics)
