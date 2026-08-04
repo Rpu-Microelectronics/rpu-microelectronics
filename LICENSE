@@ -1,4 +1,4 @@
-RPU SOURCE-AVAILABLE LICENSE v1.0
+RPU SOURCE-AVAILABLE LICENSE v1.1
 ==================================
 
 Copyright (c) 2026 Özcan Demirkıran, RPU Microelectronics
@@ -7,6 +7,9 @@ All rights reserved.
 This license governs the use of the RPU (Reflexive Processing Unit)
 hardware description files, testbenches, and documentation contained
 in this repository (the "Work").
+
+This is NOT an OSI-approved open-source license. It is a
+source-available license with a commercial use restriction.
 
 
 1. PERMITTED USES (free of charge)
@@ -49,29 +52,52 @@ This license grants COPYRIGHT permissions only. NO license, express
 or implied, by estoppel or otherwise, is granted under any patent or
 patent application of Özcan Demirkıran or RPU Microelectronics,
 including but not limited to PCT/IB2026/053070 and TR 2025/012696.
-Practicing the patented architecture — in any hardware description
-language, circuit topology, or process node — for commercial purposes
-requires a written patent license, regardless of whether the files in
-this repository are used.
+
+Practicing the subject-matter claimed in those applications — in any
+hardware description language or process node — for commercial
+purposes requires a written patent license, regardless of whether the
+files in this repository are used. Nothing in this Section is
+intended to assert any right that does not exist unless and until a
+patent is granted.
 
 
 4. PATENT NOTICE
 ----------------
-The architecture implemented in this repository is the subject of:
+The architecture implemented in this repository is the subject of the
+following patent APPLICATIONS. No patent has yet been granted, and no
+enforceable patent right exists in any jurisdiction until grant.
 
   - Turkish national patent application TR 2025/012696
-    (priority date: 4 September 2025)
-  - International patent application PCT/IB2026/053070
-    (filed 27 March 2026, designating 153 PCT contracting states)
+    (filed 4 September 2025)
+  - International application PCT/IB2026/053070
+    (filed 27 March 2026, claiming the above priority)
 
-The official TÜRKPATENT search report for the priority application
-cited no document in category X (a document that alone prejudices
-novelty); the claimed architecture was found novel over the searched
-art, including US8450711B2 (Hewlett-Packard) and US11144718B2 (IBM).
-International search and examination under the PCT are ongoing.
+Status of examination:
 
-The patent claims are drafted independently of implementation
-language, circuit topology, and process node.
+  - The TÜRKPATENT search report for the national application cited no
+    document in category X (a document that alone prejudices novelty).
+  - International search under the PCT has been carried out by the
+    European Patent Office. The European Patent Office found the
+    subject-matter of several claims — including the split-window
+    running-sum computation, the Guardian sideband and the array
+    architecture — to be new over the cited art, and raised objections
+    against the remaining claims. The international search report and
+    written opinion will be published together with the application
+    and may be consulted by any interested party at that time.
+  - Examination in the national and regional phases is ongoing. Claim
+    scope may change during examination.
+
+The claims as currently pursued are directed to a specific hardware
+arrangement: a decision derived from the difference between values
+representing two successive intervals of a sample window, maintained
+by running sums at a cost independent of window depth, compared
+without reference to the absolute magnitude of any individual sample,
+and applied to alter the element's own hardware operating mode
+without any processor, program counter, instruction memory, state
+machine or centralised control unit in the decision path.
+
+The claims are drafted independently of hardware description language
+and process node.
 
 
 5. TRADEMARK
@@ -91,11 +117,50 @@ ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
 CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
 
 
-7. SUMMARY (non-binding convenience table)
-------------------------------------------
+7. TERMINATION
+--------------
+This license and all rights granted under it terminate automatically,
+without notice, upon any breach of Section 1 or Section 2. Upon
+termination you shall immediately cease all use of the Work and
+destroy all copies in your possession or control. Sections 3, 5, 6,
+8, 9 and 10 survive termination.
+
+
+8. DEFENSIVE TERMINATION
+------------------------
+If you, or any entity you control, initiate or voluntarily
+participate in any legal proceeding asserting that the Work or the
+subject-matter of the applications identified in Section 4 infringes
+a patent, or seeking a declaration that any such application or any
+patent granted on it is invalid or unenforceable, then all rights
+granted to you under this license terminate immediately upon the
+filing of that proceeding.
+
+
+9. NO WAIVER; SEVERABILITY
+--------------------------
+Failure to enforce any provision of this license does not constitute
+a waiver of that provision or of any other provision. If any
+provision is held unenforceable, it shall be modified to the minimum
+extent necessary to make it enforceable, and the remaining provisions
+shall remain in full force.
+
+
+10. GOVERNING LAW AND JURISDICTION
+----------------------------------
+This license is governed by and construed in accordance with the laws
+of the Republic of Türkiye, without regard to its conflict-of-laws
+rules. The courts and enforcement offices of Kocaeli, Türkiye shall
+have exclusive jurisdiction over any dispute arising out of or in
+connection with this license.
+
+
+11. SUMMARY (non-binding convenience table)
+-------------------------------------------
   Research and evaluation:   Permitted, free
   Academic publication:      Permitted (cite PCT/IB2026/053070)
   Redistribution:            Permitted with notices intact,
                              non-commercial purposes only
   Commercial use:            Requires written license agreement
   Patent rights:             NOT granted by this license
+  Governing law:             Türkiye (Kocaeli courts)
