@@ -2,9 +2,9 @@
 
 **A 2,960-gate synthesizable hardware IP block that keeps your processor asleep until something real happens.**
 
-[![Patent](https://img.shields.io/badge/Patent-PCT%2FIB2026%2F053070-blue)](https://www.wipo.int)
+[![Patent pending](https://img.shields.io/badge/Patent%20pending-PCT%2FIB2026%2F053070-blue)](https://patentscope.wipo.int)
 [![Silicon](https://img.shields.io/badge/Silicon-TSMC%2065nm%20%7C%20SKY130-green)](https://rpu-micro.com)
-[![License](https://img.shields.io/badge/License-Apache%202.0%20(non--commercial)-orange)](LICENSE)
+[![License](https://img.shields.io/badge/License-Source--Available%20(evaluation%20free)-orange)](LICENSE)
 
 ---
 
@@ -333,7 +333,7 @@ One line of testbench code. It is the single most useful check you can run on th
 
 The stability band is defined by fixed setpoints, so the usable adaptation range is bounded by the band you configure. If your noise floor varies by more than roughly **4×** over time, your delta will leave the band and the threshold will settle at `MIN_TH_P` or `MAX_TH_P`.
 
-For most deployments — a sensor in a reasonably consistent environment — this is not a constraint, and a correctly sized band adapts across the range you care about. For environments where the noise floor swings by orders of magnitude (a geophone between a still night and a gale), see [Roadmap](#roadmap).
+For most deployments — a sensor in a reasonably consistent environment — this is not a constraint, and a correctly sized band adapts across the range you care about. For environments where the noise floor swings by orders of magnitude (a geophone between a still night and a gale), contact us — an extended-range variant is under development and not in this release.
 
 ---
 
@@ -356,34 +356,13 @@ The defaults assume a delta range of roughly 20–200. Averaging over `DEPTH/2 =
 
 ---
 
-## Roadmap
-
-The architecture is covered by PCT/IB2026/053070, and the claim scope extends to variants of the policy engine. Two directions are under active evaluation.
-
-**Proportional setpoints.** Instead of fixed `HI_DELTA_P` / `LO_DELTA_P`, scale the setpoints with the current threshold:
-
-```
-hi_ref = threshold × K_HI / 16     (K_HI = 24 → 1.5×)
-lo_ref = threshold × K_LO / 16     (K_LO = 8  → 0.5×)
-```
-
-This closes the control loop and makes the stability band scale with the signal, removing the ~4× bound on the adaptive range and moving the block toward genuinely calibration-free deployment. Cost is small: `th × 1.5 = th + (th >> 1)` is one adder and `th × 0.5` is a wire — roughly **60 gates, about 2% of the block.** No multiplier, no divider.
-
-Implemented and measured as a compile-time option: the threshold tracks (`th_min = 20 → th_max = 138`) where fixed setpoints settle at a rail. Not shipped yet — the loop currently equilibrates at `delta ≈ threshold`, so a separate margin factor is needed to hold the threshold *above* the noise rather than at it. That is the next piece of work.
-
-**Reverse mode.** The inverse predicate: alarm on the *absence* of change. A transducer whose natural noise signature disappears is a transducer that is dead, disconnected, or being spoofed. Cheap to add — the delta is already computed; it needs a low comparator plus a persistence counter, roughly 100–150 gates. It does not depend on sparsity, so it applies in regimes where the primary mode does not.
-
-Both are within the patented claim scope. Neither is in the current release.
-
----
-
 ## Notes on Guardian Sideband
 
 The Guardian Sideband (Module 107) runs on an **ungated clock** by design. Its purpose is to remain observable even when the main clock is fully gated, which is essential for watchdog compliance in safety-critical applications (defense, automotive, medical).
 
 This means the Guardian continuously consumes a small amount of static power regardless of main clock state. For applications where Guardian observability is not required, the module can be excluded from synthesis by removing the instantiation — the core `wake_en` functionality is unaffected.
 
-**Scope:** the Guardian observes the *RPU*. It does not detect a dead or frozen *sensor* — that is the reverse mode described in [Roadmap](#roadmap) and is not in this release.
+**Scope:** the Guardian observes the *RPU*. It does not detect a dead or frozen *sensor*; that capability is not in this release.
 
 ---
 
@@ -461,7 +440,7 @@ Real simulation measurement — lowRISC Ibex, Verilator, 5,000,004 cycles, 5,000
 
 | Trade-off | Detail | Impact |
 |-----------|--------|--------|
-| **Stability band** | No threshold adjustment when `LO_DELTA_P < delta < HI_DELTA_P` | Prevents oscillation on borderline signals, but bounds the adaptive range to roughly 4× of noise-floor variation. The band must bracket your delta — see [Threshold tuning](#threshold-tuning). Proportional setpoints remove this bound — see [Roadmap](#roadmap). |
+| **Stability band** | No threshold adjustment when `LO_DELTA_P < delta < HI_DELTA_P` | Prevents oscillation on borderline signals, but bounds the adaptive range to roughly 4× of noise-floor variation. The band must bracket your delta — see [Threshold tuning](#threshold-tuning). An extended-range variant is under development and not in this release. |
 | Guardian ungated clock | Runs continuously for watchdog compliance | Small static power overhead |
 | 2-stage pipeline | Stage-A captures, Stage-B computes delta | 2-cycle decision latency by design |
 | Accumulator width | `SUM_W = DATA_WIDTH + log₂(DEPTH/2)` | Verify when `DEPTH > 32` |
@@ -472,16 +451,24 @@ Real simulation measurement — lowRISC Ibex, Verilator, 5,000,004 cycles, 5,000
 
 ## License
 
-This RTL is released for **research and evaluation purposes only**.
+Released under the **RPU Source-Available License v1.1** (see [`LICENSE`](LICENSE)). This is **not** an OSI-approved open-source licence.
 
-This is **not** a standard Apache 2.0 license. The LICENSE file in this repository is Apache 2.0 with a commercial use restriction added.
+- Research, academic, evaluation and benchmarking use: **free**
+- Redistribution with notices intact, non-commercial purposes: **permitted**
+- Commercial use (SoC integration, tape-out, product deployment, resale as IP): **requires a written agreement**
+- **Patent rights: not granted by this licence.** Copyright permission and patent permission are separate and independent.
 
-- Research, academic, and evaluation use: **free**
-- Commercial use (SoC integration, tape-out, product deployment): **requires a written license agreement**
+### Patent status
 
-Contact ozcan.demirkiran@rpu-micro.com for commercial licensing.
+The architecture is the subject of two pending **applications** — **TR 2025/012696** (filed 4 September 2025) and **PCT/IB2026/053070** (filed 27 March 2026, claiming that priority). **No patent has been granted.** No enforceable patent right exists in any jurisdiction until grant, and claim scope may change during examination.
 
-The underlying architecture is the subject of international patent application PCT/IB2026/053070 (pending). The application covers the architectural principle — using temporal rate of change (ΔC/Δt) as the primary signal for autonomous hardware gating decisions.
+The TÜRKPATENT search report for the national application cited no document in category X. International search has been carried out by the European Patent Office, which found the subject-matter of several claims — including the split-window running-sum computation, the Guardian sideband and the array architecture — to be new over the cited art, and raised objections against the remainder. The search report and written opinion will publish together with the application; anyone evaluating the RPU commercially is welcome to read them then, or to ask us for a summary now.
+
+The claims as currently pursued are directed to a specific hardware arrangement: a decision derived from the difference between values representing two successive intervals of a sample window, maintained by running sums at a cost independent of window depth, compared without reference to the absolute magnitude of any individual sample, and applied to alter the element's own hardware operating mode with no processor, program counter, instruction memory, state machine or centralised control unit in the decision path.
+
+The claims are drafted independently of hardware description language and process node. They are **not** independent of circuit topology: a materially different way of computing the change metric may fall outside them. If you are evaluating the RPU for a commercial product, talk to us early — evaluation is free and we will tell you plainly what is and is not covered.
+
+For commercial licensing: <ozcan.demirkiran@rpu-micro.com>
 
 ---
 
@@ -493,5 +480,5 @@ ozcan.demirkiran@rpu-micro.com
 +90 536 636 10 72
 [rpu-micro.com](https://rpu-micro.com)
 
-Patent: PCT/IB2026/053070 (pending) · TR 2025/012696 (pending)
+Patent applications (pending, not granted): PCT/IB2026/053070 · TR 2025/012696
 GitHub: [github.com/Rpu-Microelectronics/rpu-microelectronics](https://github.com/Rpu-Microelectronics/rpu-microelectronics)
