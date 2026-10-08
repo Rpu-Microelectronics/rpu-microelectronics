@@ -84,13 +84,13 @@ endmodule
 module rpu_guardian_monitor #(
     parameter int DATA_WIDTH = 12
 )(
-    input  logic                   clk,
-    input  logic                   rst_n,
+    input  wire                    clk,
+    input  wire                    rst_n,
 
-    input  logic                   main_valid,
-    input  logic [DATA_WIDTH-1:0]  main_data,
-    input  logic [DATA_WIDTH-1:0]  delta_abs,
-    input  logic [DATA_WIDTH-1:0]  threshold,
+    input  wire                    main_valid,
+    input  wire  [DATA_WIDTH-1:0]  main_data,
+    input  wire  [DATA_WIDTH-1:0]  delta_abs,
+    input  wire  [DATA_WIDTH-1:0]  threshold,
 
     output logic                   alert,
     output logic [DATA_WIDTH-1:0]  last_data,
@@ -133,13 +133,13 @@ module rpu_ultimate_final #(
     parameter int HI_DELTA_P     = 200,   // delta threshold for step-up
     parameter int LO_DELTA_P     = 20     // delta threshold for step-down
 )(
-    input  logic                   clk,
-    input  logic                   rst_n,      // async active-low reset (ASIC standard)
+    input  wire                    clk,
+    input  wire                    rst_n,      // async active-low reset (ASIC standard)
 
-    input  logic                   in_valid,
-    input  logic [DATA_WIDTH-1:0]  in_data,
+    input  wire                    in_valid,
+    input  wire  [DATA_WIDTH-1:0]  in_data,
 
-    input  logic                   scan_en,    // DFT scan enable (fed to ICG)
+    input  wire                    scan_en,    // DFT scan enable (fed to ICG)
 
     // Primary outputs
     output logic                   rpu_event_pulse, // 1-cycle: post-update delta > threshold AND full
@@ -473,6 +473,9 @@ module rpu_ultimate_final #(
 endmodule  // rpu_ultimate_final
 
 
+// Icarus Verilog does not support `bind` or concurrent assertions; the SVA block below is skipped there and runs in
+// Vivado xsim, Questa, VCS and Xcelium.
+`ifndef __ICARUS__
 // =============================================================================
 // 4.  SVA BIND MODULE — 3 Critical Signoff Assertions
 //     Include in simulation / formal flows only.
@@ -484,13 +487,13 @@ module rpu_sva_bind #(
     parameter int MIN_TH_P   = 10,
     parameter int MAX_TH_P   = 2000
 )(
-    input logic                      clk,
-    input logic                      rst_n,
-    input logic                      in_valid,
-    input logic                      full_status,
-    input logic                      rpu_event_pulse,
-    input logic [DATA_WIDTH-1:0]     threshold_dbg,
-    input logic [$clog2(DEPTH)-1:0]  wr_ptr
+    input wire                       clk,
+    input wire                       rst_n,
+    input wire                       in_valid,
+    input wire                       full_status,
+    input wire                       rpu_event_pulse,
+    input wire  [DATA_WIDTH-1:0]     threshold_dbg,
+    input wire  [$clog2(DEPTH)-1:0]  wr_ptr
 );
     localparam int DEPTH_L1 = (DEPTH-1);
     localparam int ADDR_W = $clog2(DEPTH);
@@ -555,6 +558,8 @@ bind rpu_ultimate_final rpu_sva_bind #(
     .wr_ptr          (wr_ptr)
 );
 `endif
+
+`endif  // __ICARUS__
 
 `default_nettype wire
 

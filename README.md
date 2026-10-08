@@ -21,20 +21,21 @@ Every always-on system first asks one question: *has anything changed?* A level 
 
 ## Key results
 
-Results below were measured with the **delivered RPU core and system evaluation kit** (same architecture as the reference core in this repository; kits available under NDA). Each result carries its evidence level.
+Results below were measured with the RPU cores of the evaluation kits (same architecture as the reference core in this repository; kits available under NDA): the delivered V4 core, and the V4.1 core of the system kit where an option is named. Each result carries its evidence level and the comparator's setting.
 
 | Test | Result | Level |
 |---|---|---|
-| Unseen recordings, settings tuned once and frozen | **RPU 12/12 events, comparator 8/12.** The RPU never missed an event the comparator caught | FPGA board |
-| Proportional threshold setpoints, 8 recordings, 4 held-out folds | 57/61 events, 120 false alarms on data the setting had never seen, vs 45/61 and 122 for fixed setpoints | Model + board (8/8 match) |
-| Stress set: small events, steps, ramps, changing noise | RPU 52/64, comparator 8/64 | RTL simulation |
-| Noise sweep, σ 25 → 400, settings frozen | The RPU never went blind; at the highest noise 373 wake-ups vs 936 for the comparator | Bit-exact model |
-| Real earthquake records (STEAD), P-wave arrivals | RPU 213/300, STA/LTA 210/300 | Bit-exact model |
-| Real bearing faults (CWRU), rectifier front end | 25/27 with 0 false alarms; comparator and STA/LTA 27/27 at 1.5–6 false alarms per minute | Bit-exact model |
-| Sensor faults: stream stop, heartbeat loss, frozen value | All reported; a persistent fault raises one interrupt (CPU active cycles 43,617 → 442); digital freeze flagged within 34 samples, analog within 290 | FPGA board, 10/10 |
+| Unseen recordings U1–U3 (12 events), settings frozen | **RPU 12/12 with the proportional-setpoint or two-speed option; 10/12 with the delivered default setting.** EWMA comparator at its campaign setting (threshold 850, not retuned): 8/12. The RPU never missed an event the comparator caught. Small synthetic set with event amplitudes around the comparator's threshold; with the default setting the RPU also raised 129 unmatched alarms against the comparator's 0 | FPGA board |
+| Proportional threshold setpoints (V4.1 option, off by default), 8 synthetic recordings, 4 held-out folds | 57/61 events, 120 false alarms on data the setting had never seen, vs 45/61 and 122 for fixed setpoints. **Weaker on real seismic data:** STEAD 181/300 against 213/300 for fixed setpoints | Model + board (8/8 match) |
+| Stress set: small events, steps, ramps, changing noise | RPU 52/64, comparator 8/64 at its campaign setting (threshold 850, not tuned on this set, which contains 300- and 700-amplitude events). Not a comparison of equally tuned designs | RTL simulation |
+| Noise sweep, σ 25 → 400, both tuned once at σ 200 and frozen | The RPU never went blind (4/4 at every level); the integer comparator went blind at σ 25 (1/4). At σ 400 the RPU woke 373 times against 936, and most of those wake-ups are false alarms for both. Retuned for each level, the comparator matches the RPU | Bit-exact model |
+| Real earthquake records (STEAD), P-wave arrivals, 10 h test set | RPU 213/300 at 16.4 false triggers per hour, STA/LTA 210/300 at 23.0 per hour (both tuned on a separate set for ≤ 20 per hour) | Bit-exact model |
+| Real bearing faults (CWRU), rectifier front end | 25/27 with 0 false alarms; comparator and STA/LTA 27/27 at 1.5–6 false alarms per minute. Transitions made by concatenating recordings | Bit-exact model |
+| Real machine sounds (MIMII: valve, pump, slider, fan) | **Negative.** Even with per-machine calibration no method is reliable; the best catch about half the events (RPU 13/24 on pumps at 4.2 false alarms per minute). These faults are a pattern-anomaly problem, not a change-detection one | Bit-exact model |
+| Sensor faults: stream stop, heartbeat loss, frozen value | All reported; a persistent fault raises one interrupt (CPU active cycles 43,617 → 442); digital freeze flagged within 34 samples, analog within 290 | FPGA board 10/10 (fault-injection test build); freeze latencies from RTL simulation |
 | System kit, 14 bitstreams | Board counters matched full-system simulation in 99/99 runs | FPGA board |
 
-The comparator is an EWMA-baseline comparator tuned on the same data. Detection is always reported next to wake-ups, because a low wake count can also mean a blind detector. Platform: Nexys A7-100T with a [lowRISC Ibex](https://github.com/lowRISC/ibex) RISC-V core, CPU sleeping in WFI.
+The comparator is an EWMA-baseline comparator; its setting is stated in each row. With equal tuning on the same data at a single noise level it does as well as the RPU; the RPU's measured advantage is that it keeps working, without retuning, when conditions change. Detection is always reported next to wake-ups, because a low wake count can also mean a blind detector. Platform: Nexys A7-100T with a [lowRISC Ibex](https://github.com/lowRISC/ibex) RISC-V core, CPU sleeping in WFI.
 
 ---
 
@@ -44,7 +45,7 @@ The comparator is an EWMA-baseline comparator tuned on the same data. Detection 
 |------|---------|
 | `rpu_ultimate_final.sv` | Reference RPU core, v2.0. SystemVerilog IEEE 1800-2017, no external libraries. Includes SVA assertions. |
 | `tb_rpu_ultimate_final.sv` | Self-checking testbench. Run this first. |
-| `tb_rpu_ultimate_final_synthesis.sv` | Post-synthesis testbench with SDF annotation, for use against a netlist. |
+| `tb_rpu_ultimate_final_synthesis.sv` | Post-synthesis testbench for a netlist: give the SDF file with `+define+RPU_SDF="<path>.sdf"` (without it: zero-delay); writes a VCD for power analysis unless `+define+RPU_NO_VCD`. Same checks as the RTL testbench. |
 
 The reference core shows the architecture and lets you reproduce its behaviour. The delivered core, the event shell, the RISC-V system kit and the calibration tool are part of the evaluation kits (see below).
 
@@ -52,16 +53,17 @@ The reference core shows the architecture and lets you reproduce its behaviour. 
 
 ## Run the simulation
 
-**Icarus Verilog:**
+**Icarus Verilog** (12 or later; Icarus does not support `bind` or concurrent assertions, so the SVA block is skipped there):
 ```bash
 iverilog -g2012 -o sim_rpu rpu_ultimate_final.sv tb_rpu_ultimate_final.sv && vvp sim_rpu
 ```
 
-**Verilator:**
+**Verilator** (5.x; the lint warnings are width and style warnings, `-Wno-fatal` keeps them visible without stopping the build):
 ```bash
-verilator --binary --sv -Wall rpu_ultimate_final.sv tb_rpu_ultimate_final.sv -o sim_rpu && ./obj_dir/sim_rpu
+verilator --binary --timing --sv -Wall -Wno-fatal rpu_ultimate_final.sv tb_rpu_ultimate_final.sv --top-module tb_rpu_ultimate_final -o sim_rpu && ./obj_dir/sim_rpu
 ```
 
+**Vivado xsim:** `xvlog -sv rpu_ultimate_final.sv tb_rpu_ultimate_final.sv && xelab tb_rpu_ultimate_final -s sim && xsim sim -R`
 **Synopsys VCS:** `vcs -sverilog -R rpu_ultimate_final.sv tb_rpu_ultimate_final.sv`
 **Questa / ModelSim:** `vlog rpu_ultimate_final.sv tb_rpu_ultimate_final.sv && vsim -c tb_rpu_ultimate_final -do "run -all; quit"`
 **Cadence Xcelium:** `xrun -sv rpu_ultimate_final.sv tb_rpu_ultimate_final.sv`
@@ -84,6 +86,8 @@ T8: Guardian sideband monitor...           T8: PASS
 RESULT: PASS — All tests passed. Errors=0
 ==================================================
 ```
+
+The testbench compares the DUT with a reference model on every sample, at the clock edge where the DUT registers its outputs (two edges after the sample is captured). Eight results are listed as `NOTE`: their compare edge falls in the reset that starts the next test.
 
 ---
 
@@ -254,7 +258,7 @@ Log `threshold_dbg` min / avg / max on your first run. If `th_min == th_max`, th
 
 ### Wider noise ranges
 
-With fixed setpoints, the usable adaptation range is set by the band you configure. For environments where the noise floor swings over a very wide range, the delivered core offers **proportional setpoints**, derived from the threshold itself; on held-out data they caught more events with fewer false alarms than fixed setpoints (see Key results). Our calibration tool, which matches the RTL bit for bit, selects a profile from your own recordings.
+With fixed setpoints, the usable adaptation range is set by the band you configure. For environments where the noise floor swings over a very wide range, the V4.1 core of the system kit offers **proportional setpoints** as an option (off by default), derived from the threshold itself; on held-out synthetic data they caught more events with fewer false alarms than fixed setpoints, but on real seismic data they were weaker (see Key results). Choose them per application, with the calibration tool, on your own recordings. Our calibration tool, which matches the RTL bit for bit, selects a profile from your own recordings.
 
 ---
 
@@ -281,7 +285,7 @@ The defaults assume a metric of roughly 20–200. Most sensor signals produce 1�
 
 The Guardian sideband in this reference core runs on an ungated clock, so the last metric, threshold and alert stay observable while the main clock is gated. It observes the RPU itself.
 
-The **event shell** in the system evaluation kit is a separate state machine that reads only the decision stream and the CPU's acknowledgements, and never writes the core's metric or threshold. It adds interrupt coalescing, a hardware ACK, a wake budget, an S1 shape gate, stream-stop and heartbeat timeouts, frozen-value detection with a report-once fault interrupt, a low-sensitivity flag and back-dated onset timestamps. Each function was added without changing the verified core.
+The **event shell** in the system evaluation kit is a separate state machine that reads only the decision stream and the CPU's acknowledgements, and never writes the core's metric or threshold. It adds interrupt coalescing, a hardware ACK, a wake budget, stream-stop and heartbeat timeouts, frozen-value detection with a report-once fault interrupt, a low-sensitivity flag, back-dated onset timestamps, an event card, a self-check of the core's metric, a configuration lock, a software-selected input conditioner (raw, envelope, difference or high-pass; raw by default) and held-alarm delivery (an alarm behind an un-ACKed event is delivered late instead of merged). Each shell function was added without changing the core. Core options (the S1 shape gate, proportional setpoints, rising-only alarms) are compile-time parameters; with them off the V4.1 core is formally equivalent to the delivered V4 core (Yosys, four parameter sets).
 
 ---
 
@@ -299,7 +303,7 @@ Request: ceo@rpu-micro.com · [rpu-micro.com](https://rpu-micro.com)
 ## FAQ
 
 **"Can't a simple comparator do this?"**
-On a stable noise floor, a comparator with hysteresis is cheap and works. It is only as good as its last retune: when the noise amplitude changes, a level-triggered comparator storms the CPU with interrupts and an edge-triggered one goes blind. The firmware that retunes it needs an awake processor. The RPU does that adaptation itself, in about 3,000 standard cells. Tuned once and frozen, it caught 12/12 events on unseen recordings against 8/12 for a tuned comparator.
+On a stable noise floor, a comparator with hysteresis is cheap and works. It is only as good as its last retune: when the noise amplitude changes, a level-triggered comparator storms the CPU with interrupts and an edge-triggered one goes blind. The firmware that retunes it needs an awake processor. The RPU does that adaptation itself, in about 3,000 standard cells. Tuned once at one noise level and frozen, it never went blind across a σ 25 → 400 noise sweep, while a comparator tuned the same way missed 3 of 4 events at the quiet end. Retuned for every level, a comparator does as well.
 
 **"We already use WFI and interrupts."**
 So does the RPU. The question is what raises the interrupt. A raw sensor interrupt fires on noise and drift; a firmware trigger needs the CPU awake. The RPU puts a rate-of-change decision with an adaptive threshold in front of the interrupt line, decided a fixed two clocks after the sample. The CPU's own wake-up time after that depends on the CPU.

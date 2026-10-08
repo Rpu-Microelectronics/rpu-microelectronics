@@ -133,6 +133,11 @@ module tb_rpu_ultimate_final;
     logic [SUM_W-1:0]      ref_sum_new;
     logic [SUM_W-1:0]      ref_sum_old;
     logic [DATA_WIDTH-1:0] ref_threshold;
+    // [aligned] expectation queue (declared before ref_reset, which clears it); packed so Icarus accepts it
+    typedef struct packed { int due; logic full; logic [DATA_WIDTH-1:0] delta; logic [DATA_WIDTH-1:0] th_after; logic ev; int idx; } exp_t;
+    logic [$bits(exp_t)-1:0] exp_q[$];   // queue of packed expectations (Icarus has no queues of structs)
+    int edge_cnt = 0;
+    int sample_idx = 0;
 
     // Stage-A / Stage-B pipeline registers for reference model
     logic                  pipe_vld        [0:1];
@@ -189,6 +194,7 @@ module tb_rpu_ultimate_final;
         ref_sum_new   = '0;
         ref_sum_old   = '0;
         ref_threshold = MIN_TH_P[DATA_WIDTH-1:0];
+        exp_q.delete();   // [Faz 2 aligned]
         for (i = 0; i < 2; i++) begin
             pipe_vld[i]        = 1'b0;
             pipe_din[i]        = '0;
@@ -202,21 +208,44 @@ module tb_rpu_ultimate_final;
     // -------------------------------------------------------------------------
     // send_sample — drives DUT + advances reference model + compares outputs
     // -------------------------------------------------------------------------
+    // [aligned] checker: compare queued expectations at capture edge + 2, the edge where the DUT registers its outputs
+    // (the original TB compared one edge early, so the DUT looked one sample behind the reference)
+    exp_t chk;
+    always @(posedge clk) edge_cnt <= edge_cnt + 1;
+    always @(posedge clk) begin
+        #1;
+        while (exp_q.size() > 0) begin
+            chk = exp_q[0];
+            if (chk.due > edge_cnt) break;
+            if (chk.due == edge_cnt && chk.full && !rst_n)
+                $display("[%0t] NOTE: sample=%0d result due while rst_n=0 (cleared by the reset that starts the next test): not compared", $time, chk.idx);
+            if (chk.due == edge_cnt && chk.full && rst_n) begin
+                if (delta_abs_dbg !== chk.delta)
+                    fail($sformatf("delta mismatch. sample=%0d DUT=%0d REF=%0d", chk.idx, delta_abs_dbg, chk.delta));
+                if (threshold_dbg !== chk.th_after)
+                    fail($sformatf("threshold mismatch. sample=%0d DUT=%0d REF=%0d", chk.idx, threshold_dbg, chk.th_after));
+                if (rpu_event_pulse !== chk.ev)
+                    fail($sformatf("event mismatch. sample=%0d DUT=%0b REF=%0b", chk.idx, rpu_event_pulse, chk.ev));
+                if (wake_en !== chk.ev)
+                    fail($sformatf("wake_en mismatch. sample=%0d DUT=%0b REF=%0b", chk.idx, wake_en, chk.ev));
+            end
+            void'(exp_q.pop_front());
+        end
+    end
+
     task automatic send_sample(input logic [DATA_WIDTH-1:0] d);
         logic [DATA_WIDTH-1:0] tail_old, mid_old;
         logic [SUM_W-1:0]      sn_next, so_next;
         logic [DATA_WIDTH-1:0] delta_ref, th_now;
-        logic                  exp_event;
+        logic                  exp_event, full_a, warm_a;
+        int unsigned           tail_a, mid_a;
+        exp_t                  e;
 
         // --- Stage-A: capture (pre-increment) ---
-        pipe_vld[0]        = 1'b1;
-        pipe_din[0]        = d;
-        pipe_full[0]       = ref_full;
-        pipe_warmup_old[0] = (!ref_full && (ref_count < HALF));
-        pipe_tail[0]       = ref_wr_ptr;
-        pipe_mid[0]        = ref_add_half(ref_wr_ptr);
-
-        // Advance pointer and count
+        full_a = ref_full;
+        warm_a = (!ref_full && (ref_count < HALF));
+        tail_a = ref_wr_ptr;
+        mid_a  = ref_add_half(ref_wr_ptr);
         ref_wr_ptr = ref_inc(ref_wr_ptr);
         if (!ref_full) begin
             if (ref_count == (DEPTH-1)) ref_full = 1'b1;
@@ -230,62 +259,36 @@ module tb_rpu_ultimate_final;
         @(posedge clk); #1;
         in_valid = 1'b0;
 
-        // --- Stage-B: compute next sums using pipe[1] (previous cycle's Stage-A) ---
+        // --- Stage-B for THIS sample (same arithmetic as before) ---
         sn_next = ref_sum_new;
         so_next = ref_sum_old;
-
-        if (pipe_vld[1]) begin
-            tail_old = ref_mem[pipe_tail[1]];
-            mid_old  = ref_mem[pipe_mid[1]];
-            ref_mem[pipe_tail[1]] = pipe_din[1];   // write new sample
-
-            if (!pipe_full[1]) begin
-                if (pipe_warmup_old[1]) so_next = ref_sum_old + pipe_din[1];
-                else                    sn_next = ref_sum_new + pipe_din[1];
-            end else begin
-                sn_next = (ref_sum_new - mid_old)  + pipe_din[1];
-                so_next = (ref_sum_old - tail_old) + mid_old;
-            end
-
-            // Post-update delta and event (pre-update threshold — matches DUT)
-            delta_ref  = ref_delta_next(sn_next, so_next);
-            th_now     = USE_DYNAMIC_TH ? ref_threshold
-                                        : FIXED_TH[DATA_WIDTH-1:0];
-            exp_event  = pipe_full[1] && (delta_ref > th_now);
-
-            // Update reference threshold AFTER event decision (matches DUT)
-            if (USE_DYNAMIC_TH && pipe_full[1])
-                ref_threshold = ref_th_update(ref_threshold, delta_ref);
-
-            // Commit reference sums
-            ref_sum_new = sn_next;
-            ref_sum_old = so_next;
+        tail_old = ref_mem[tail_a];
+        mid_old  = ref_mem[mid_a];
+        ref_mem[tail_a] = d;
+        if (!full_a) begin
+            if (warm_a) so_next = ref_sum_old + d;
+            else        sn_next = ref_sum_new + d;
+        end else begin
+            sn_next = (ref_sum_new - mid_old)  + d;
+            so_next = (ref_sum_old - tail_old) + mid_old;
         end
+        delta_ref = ref_delta_next(sn_next, so_next);
+        th_now    = USE_DYNAMIC_TH ? ref_threshold : FIXED_TH[DATA_WIDTH-1:0];
+        exp_event = full_a && (delta_ref > th_now);
+        if (USE_DYNAMIC_TH && full_a)
+            ref_threshold = ref_th_update(ref_threshold, delta_ref);
+        ref_sum_new = sn_next;
+        ref_sum_old = so_next;
 
-        // Shift pipeline
-        pipe_vld[1]        = pipe_vld[0];
-        pipe_din[1]        = pipe_din[0];
-        pipe_full[1]       = pipe_full[0];
-        pipe_warmup_old[1] = pipe_warmup_old[0];
-        pipe_tail[1]       = pipe_tail[0];
-        pipe_mid[1]        = pipe_mid[0];
-        pipe_vld[0]        = 1'b0;
+        // queue the expectation for the DUT's output register edge (capture edge + 2)
+        e.due = edge_cnt + 2; e.full = full_a; e.delta = delta_ref;
+        e.th_after = USE_DYNAMIC_TH ? ref_threshold : FIXED_TH[DATA_WIDTH-1:0];
+        e.ev = exp_event; e.idx = sample_idx; sample_idx++;
+        exp_q.push_back(e);
 
-        // --- Common checks ---
+        // --- Common checks (unchanged) ---
         check_no_x();
         check_warmup_guard();
-
-        // --- Comparison checks (only when Stage-B has processed a FULL-state sample) ---
-        if (pipe_vld[1] && pipe_full[1]) begin
-            if (delta_abs_dbg !== delta_ref)
-                fail($sformatf("delta mismatch. DUT=%0d REF=%0d", delta_abs_dbg, delta_ref));
-            if (threshold_dbg !== th_now)
-                fail($sformatf("threshold mismatch. DUT=%0d REF=%0d", threshold_dbg, th_now));
-            if (rpu_event_pulse !== exp_event)
-                fail($sformatf("event mismatch. DUT=%0b REF=%0b", rpu_event_pulse, exp_event));
-            if (wake_en !== exp_event)
-                fail($sformatf("wake_en mismatch. DUT=%0b REF=%0b", wake_en, exp_event));
-        end
     endtask
 
     // Random data helpers
